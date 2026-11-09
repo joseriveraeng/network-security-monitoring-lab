@@ -8,7 +8,7 @@ What was tested and what was actually observed. Only findings supported by the e
 |---|---|---|
 | VM connectivity | Attacker (LAN) reaching victim (OPT1) | Packets from `192.168.1.140` were captured on the victim `192.168.2.10` |
 | Network segmentation | Two separate subnets joined only by OPNsense | `192.168.1.0/24` and `192.168.2.0/24`; attacker and victim are in different subnets |
-| OPNsense | Interfaces and traffic between segments | Three interfaces configured; the attack traffic was not blocked |
+| OPNsense | Interfaces and traffic between segments | Three interfaces configured; traffic between LAN and OPT1 was routed (the manual SSH login worked) |
 | Suricata | Alerts during the attacks | 10 alerts from `192.168.1.140` to `192.168.2.10` on OPT1: port-scan and SSH brute-force signatures |
 | Wireshark | Packets from the attacker | 2,056 SYN-only packets from the attacker out of 8,914 captured |
 | Nmap / Hydra | Attacks against the lab victim | Detected by Suricata and visible in Wireshark (see findings) |
@@ -18,7 +18,7 @@ What was tested and what was actually observed. Only findings supported by the e
 - **Date:** 2026-10-14 (alert timestamps)
 - **Objective:** Check whether Suricata detects a port scan against the victim.
 - **Environment:** Kali `192.168.1.140` → Debian `192.168.2.10`, monitored on OPT1.
-- **Tools:** Nmap, Suricata, Wireshark.
+- **Tools:** Nmap (`nmap -sV`), Suricata, Wireshark.
 
 **What Suricata showed.** Five alerts from the same source IP and the same source port (`53105`), each to a different destination port:
 
@@ -34,7 +34,7 @@ What was tested and what was actually observed. Only findings supported by the e
 
 **What Wireshark showed.** Filtering the attacker's initial SYN packets returned 2,056 of 8,914 captured packets (23.1%). The packets share the same pattern: 60 bytes, `Len=0`, `Win=1024`, `MSS=1460`, one SYN per destination port (for example 443, 5900, 113, 995, 135, 587, 1723, 8888, 110, 3389), roughly one millisecond apart.
 
-**Why this is a scan.** One source touching many different service ports on one host in a very short time is not normal client behavior. A normal client opens a few connections to the ports it needs. Each signature above fires because a different service port was probed. The small identical SYN packets are consistent with Nmap's default SYN scan.
+**Why this is a scan.** One source touching many different service ports on one host in a very short time is not normal client behavior. A normal client opens a few connections to the ports it needs. Each signature above fires because a different service port was probed. The small identical SYN packets are consistent with an Nmap SYN scan: when run as root, `-sV` first finds open ports with SYN probes and then probes the open services to identify their versions.
 
 **Triage conclusion.**
 - **Verdict:** True positive (expected, I ran the scan). Reconnaissance activity.
@@ -47,7 +47,7 @@ What was tested and what was actually observed. Only findings supported by the e
 - **Date:** 2026-10-17, 16:59 (UTC−6)
 - **Objective:** Check whether Suricata detects an SSH brute-force attempt.
 - **Environment:** Kali `192.168.1.140` → Debian `192.168.2.10`, port 22, monitored on OPT1.
-- **Tools:** Hydra, Suricata.
+- **Tools:** Hydra (`-l` one username, `-P` password wordlist), Suricata.
 
 **What Suricata showed.** Three alerts, all to destination port 22, each with a different source port:
 
@@ -61,11 +61,11 @@ What was tested and what was actually observed. Only findings supported by the e
 
 Alert detail (first row): protocol TCP, interface OPT1, configured action `Alert`.
 
-**Why this is a brute force.** A brute-force tool opens many SSH connections to the same service in a short time, and each connection uses a new source port. Several different source ports hitting port 22 from one IP is that pattern. SID 2006546 looks for frequent SSH connections from clients built on libssh, which Hydra's SSH module uses.
+**Why this is a brute force.** Hydra was run with one fixed username and a password wordlist, so it tries many passwords against the same account. A brute-force tool opens many SSH connections to the same service in a short time, and each connection uses a new source port. Several different source ports hitting port 22 from one IP is that pattern. SID 2006546 looks for frequent SSH connections from clients built on libssh, which Hydra's SSH module uses.
 
-**What this does not prove.** The alert shows that the attempts happened, not that a password was guessed. To know the result, check the victim's SSH authentication log for successful logins from `192.168.1.140`.
+**What this does not prove.** The alert shows that the attempts happened, not that a password was guessed. The outcome of the run is described next.
 
-TODO: add the outcome of the Hydra run (was a valid login found or not?).
+**Result of the run:** Hydra (user `root`, wordlist `rockyou.txt`) did not recover the password: the repeated connections were blocked during the run. I then logged in over SSH manually with the known password and it worked, which shows SSH on the victim was reachable from the attacker through OPNsense. Suricata still detected the attack.
 
 **Triage conclusion.**
 - **Verdict:** True positive (expected, I ran the attack). Credential attack against SSH.
@@ -75,7 +75,7 @@ TODO: add the outcome of the Hydra run (was a valid login found or not?).
 
 ## Combined observation
 
-The scan alerts (2026-10-14) and the SSH alerts (2026-10-17) come from the same source IP against the same victim, and in all of them the action is `allowed`. The Wireshark capture on the victim confirms the attacker's packets arrived, so in this lab the traffic was detected but not blocked. This is expected: Suricata runs in IDS mode.
+The scan alerts (2026-10-14) and the SSH alerts (2026-10-17) come from the same source IP against the same victim. In all of them the action is `allowed` because Suricata runs in IDS mode: it detects and alerts, it does not block. The Wireshark capture on the victim confirms the scan packets arrived.
 
 ## Limitations
 
@@ -83,4 +83,5 @@ The scan alerts (2026-10-14) and the SSH alerts (2026-10-17) come from the same 
 - Suricata inspects only the OPT1 interface.
 - An IDS alert means a rule matched observed traffic. It does not by itself prove a real compromise.
 - Firewall rules between LAN and OPT1 were not documented in this project.
+- The mechanism that blocked Hydra's repeated connections was not documented.
 - All tests were limited to machines I own.

@@ -39,14 +39,16 @@ Evidence:
 
 ## 4. Attack Generation (from Kali, against the lab victim only)
 
-```text
-# TODO: replace with the exact commands you ran
-nmap <options> 192.168.2.10
-hydra <options> ssh://192.168.2.10
+```bash
+# Port and service-version scan
+nmap -sV 192.168.2.10
+
+# SSH brute force: one username, many passwords from a wordlist
+hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://192.168.2.10
 ```
 
-- **Nmap** was used to scan the victim's ports (reconnaissance).
-- **Hydra** was used to run an SSH login brute-force attack against the victim (port 22).
+- **Nmap `-sV`** scans the victim's ports and then probes the open services to identify their versions. Run as root, it finds ports with SYN probes first, which is the pattern seen in Wireshark.
+- **Hydra `-l root`** sets a single username and **`-P`** sets a file with passwords to try. `rockyou.txt` is the default password list that ships with Kali Linux. Hydra's SSH module opens many connections to port 22, which is what Suricata flagged.
 
 ## 5. How I Reviewed the Alerts in OPNsense
 

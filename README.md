@@ -1,68 +1,54 @@
 # Network Security Monitoring Lab
 
-A personal network security monitoring lab built with three virtual machines using Oracle VirtualBox. The project explores network segmentation, firewall functionality, intrusion detection, packet analysis, and basic network discovery in a controlled virtual environment.
+A SOC L1 home lab: I simulated a **port scan (Nmap)** and an **SSH brute-force attack (Hydra)** against a victim machine and detected both with **Suricata** on an **OPNsense** firewall, then confirmed the activity packet by packet in **Wireshark**.
 
-## Objectives
-
-- Understand network traffic flow between segmented virtual networks.
-- Explore firewall interfaces and traffic filtering with OPNsense.
-- Configure and observe Suricata IDS alerts and logs.
-- Inspect network packets with Wireshark.
-- Use Nmap for controlled network discovery and testing.
-- Document observations from security monitoring activities.
-
-## Lab Environment
-
-| Component | Role |
-|---|---|
-| Kali Linux | Security testing and traffic generation |
-| Debian | Internal client machine |
-| OPNsense | Firewall and routing between virtual networks |
-| Suricata | Intrusion Detection System (IDS) |
-| Wireshark | Packet capture and analysis |
-| Nmap | Network discovery and testing |
-
-## Network Architecture
-
-The lab uses three virtual machines connected through VirtualBox virtual networks. OPNsense provides the firewall and routing point between the internal networks.
+## Network Diagram
 
 ![Network topology](diagrams/network-topology.png)
 
-See [Network Architecture](documentation/02-network-architecture.md) for the addressing plan and topology details.
+Three VirtualBox VMs on two separate subnets, joined only by the OPNsense firewall:
 
-## Implementation
+| Role | Machine | IP address | Network |
+|---|---|---|---|
+| Attacker | Kali Linux | `192.168.1.140` | LAN (`192.168.1.0/24`) |
+| Victim | Debian | `192.168.2.10` | OPT1 (`192.168.2.0/24`) |
+| Firewall / IDS | OPNsense + Suricata | `192.168.1.1` / `192.168.2.1` | Between both networks |
 
-The work included:
+Suricata runs in IDS mode on the OPT1 interface (the victim's network), and Wireshark captures traffic on the victim.
 
-1. Creating and configuring the three virtual machines.
-2. Configuring OPNsense network interfaces and firewall functionality.
-3. Enabling Suricata monitoring and reviewing its alerts and logs.
-4. Capturing and inspecting traffic with Wireshark.
-5. Performing controlled network discovery with Nmap.
+## Key Findings
 
-More detail is available in the [Implementation Notes](documentation/03-implementation.md).
+**1. Port scan detected (Nmap `-sV`).** Suricata raised five `ET SCAN` alerts from `192.168.1.140`, each for a different service port (MSSQL, Oracle, MySQL, PostgreSQL, VNC). In Wireshark, 2,056 SYN-only packets of 60 bytes, one per destination port, about a millisecond apart, confirmed the scan.
 
-## Validation and Findings
+**2. SSH brute force detected (Hydra).** Suricata raised `ET SCAN LibSSH Based Frequent SSH Connections Likely BruteForce Attack` (SID 2006546) for repeated connections to port 22, each from a different source port. Hydra (`rockyou.txt`) did not recover the password because the repeated connections were blocked; a manual SSH login with the known password then worked.
 
-The lab was used to observe traffic between virtual machines, review Suricata events, explore firewall filtering behavior, and inspect packet captures.
+Suricata ran in IDS mode, so it only generates alerts and does not block traffic. Full analysis and triage conclusions: [Validation and Findings](documentation/04-validation-and-findings.md).
 
-Specific test observations and evidence should be recorded in [Validation and Findings](documentation/04-validation-and-findings.md). Only findings that were personally observed in the lab are reported.
+![Suricata alerts](screenshots/suricata-alerts.png)
 
-## Screenshots and Evidence
+![Wireshark SYN scan analysis](screenshots/wireshark-02-tcp-flags-analysis.png)
 
-Screenshots are organized in the `screenshots/` directory. The [Evidence Index](documentation/05-evidence-index.md) describes what each image demonstrates.
+## Documentation
+
+1. [Lab Overview](documentation/01-lab-overview.md)
+2. [Network Architecture](documentation/02-network-architecture.md)
+3. [Implementation Notes](documentation/03-implementation.md): configuration, and how I reviewed alerts and packets
+4. [Validation and Findings](documentation/04-validation-and-findings.md): alert analysis and triage
+5. [Evidence Index](documentation/05-evidence-index.md): every screenshot and what it shows
+
+## Tools
+
+OPNsense · Suricata · Wireshark · Nmap · Hydra · Kali Linux · Debian · Oracle VirtualBox
 
 ## Skills Demonstrated
 
-- Network security monitoring
-- Intrusion Detection Systems (IDS)
-- Firewall fundamentals and configuration
-- Network segmentation and traffic flow
-- Linux virtual machines
-- Packet capture and analysis
-- Network discovery and troubleshooting
-- Technical documentation
+- Intrusion detection with Suricata (IDS configuration, alert review)
+- Alert triage: source, destination, signature, severity and conclusion
+- Packet analysis with Wireshark (display filters, TCP flags)
+- Network segmentation and firewall fundamentals
+- Recognizing reconnaissance and brute-force attack patterns
+- Technical documentation with evidence
 
 ## Disclaimer
 
-This project was created for educational purposes in a personal virtual lab. Testing was limited to systems and networks controlled by the author.
+This project was created for educational purposes in a personal virtual lab. All testing was limited to machines I own.
